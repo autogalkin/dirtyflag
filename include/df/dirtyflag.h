@@ -13,20 +13,19 @@ template<class T, class Log>
 struct _dirty_flag_base : _dirty_flag_base<T, void> {
     
     using Base = _dirty_flag_base<T, void>;
-    explicit _dirty_flag_base(T object, const Log& data, state start_state=state::dirty)
+    constexpr explicit _dirty_flag_base(T object, const Log& data, state start_state=state::dirty)
         : Base(object, start_state), logger_(data) {}
 protected:
     Log logger_;
-
 };
 
 template<class T>
 struct _dirty_flag_base<T, void> {
     
-    explicit _dirty_flag_base(T object, state start_state=state::dirty) 
+    constexpr explicit _dirty_flag_base(T object, state start_state=state::dirty) 
         : object_(object), flag_(start_state) {}
 protected:
-    void logger_() const noexcept {} // empty
+    constexpr void logger_() const noexcept {} // empty
     T object_;
     mutable state flag_;
 };
@@ -41,20 +40,11 @@ public:
     constexpr dirtyflag(const dirtyflag & rhs )           noexcept(noexcept(logger_())) 
              : Base(rhs)           { mark(); };
 
-    constexpr dirtyflag(dirtyflag && rhs )     noexcept 
-             : Base(std::move(rhs)){};
-
     constexpr dirtyflag &operator=(const dirtyflag & rhs ) noexcept(noexcept(logger_()))  
              { if(rhs.object_ != this->object_) {
                   mark(); 
                   return Base::operator=(rhs);
                   }};
-
-    constexpr dirtyflag &operator=(dirtyflag && rhs )      noexcept(noexcept(logger_())) 
-             { if(rhs.object_ != this->object_) {
-                  mark(); 
-                  return Base::operator=(rhs);
-                   }};
 
     [[nodiscard]] constexpr const T  get() const noexcept 
                 requires ( std::is_pointer_v<T>) {         return object_;}

@@ -1,5 +1,7 @@
 #pragma once
 #include <cstdint>
+#include <iostream>
+#include <type_traits>
 
 
 
@@ -7,33 +9,72 @@ namespace df {
 
 enum class state : std::int8_t { clean = 0, dirty = 1 };
 
+namespace flag_type {
+
+struct default_storage {
+    template <typename DirtyFlagValue>
+    constexpr bool is_dirty(DirtyFlagValue&) const noexcept {
+        return static_cast<bool>(state_);
+    }
+    template <typename DirtyFlagValue>
+    constexpr void set_state(DirtyFlagValue&, state new_state) noexcept{
+        state_ = new_state;
+    }
+    state state_ = state::dirty;
+};
+
+struct logging
+{
+    template <typename DirtyFlagValue>
+    constexpr bool is_dirty(DirtyFlagValue&) const noexcept {
+        return false;
+    }
+    template <typename DirtyFlagValue>
+    constexpr void set_state(DirtyFlagValue& v,  state new_state) noexcept{
+        if(new_state == state::dirty) log(v);
+    }
+    template <typename DirtyFlagValue>
+    void log(DirtyFlagValue& v)
+    {
+        std::cout << "logging " << v;
+    }
+
+};
+
+} // namespace flagtype
+
+
+#pragma region internal
 namespace _internal {
 
-template<class T, class Log>
+template<class T, class LogFunc, class FlagStorage = flag_type::default_storage>
 struct _dirty_flag_base : _dirty_flag_base<T, void> {
     
     using Base = _dirty_flag_base<T, void>;
-    constexpr explicit _dirty_flag_base(T object, const Log& data, state start_state=state::dirty)
+    constexpr explicit _dirty_flag_base(T object, const LogFunc& data, state start_state=state::dirty)
         : Base(object, start_state), logger_(data) {}
 protected:
-    Log logger_;
+    LogFunc logger_;
 };
 
-template<class T>
-struct _dirty_flag_base<T, void> {
+template<class T, class FlagStorage>
+struct _dirty_flag_base<T, void, FlagStorage > {
     
     constexpr explicit _dirty_flag_base(T object, state start_state=state::dirty) 
-        : object_(object), flag_(start_state) {}
+        : object_(object){}
 protected:
-    constexpr void logger_() const noexcept {} // empty
+    constexpr void logger_() const noexcept {} // empty stub
     T object_;
-    mutable state flag_;
+    mutable FlagStorage flag_;
+    
 };
 } // namespace _internal
 
-template<class T, class Log = void>
-struct dirtyflag  final : private _internal::_dirty_flag_base<T, Log> {
-    using Base                  = _internal::_dirty_flag_base<T, Log>;
+#pragma endregion internal
+
+template<class T, class FlagStorage = flag_type::default_storage, class Log = void>
+struct dirtyflag  final : private _internal::_dirty_flag_base<T, Log, FlagStorage> {
+    using Base                  = _internal::_dirty_flag_base<T, Log, FlagStorage >;
     using Base::Base;
 private:
 public:
@@ -55,9 +96,9 @@ public:
     [[nodiscard]] constexpr       T& pin()       noexcept(noexcept(logger_()))  
                 requires (!std::is_pointer_v<T>) { mark(); return object_;}
 
-    constexpr void mark () noexcept(noexcept(logger_()))   { logger_(); flag_ = state::dirty ; } 
-    constexpr void clear() noexcept { flag_ = state::clean ; }
-    [[nodiscard]] constexpr bool is_dirty() const noexcept { return static_cast<bool>(flag_); }
+    constexpr void mark () noexcept(noexcept(logger_()))   { logger_(); flag_.set_state(object_, state::dirty) ; } 
+    constexpr void clear() noexcept { flag_.set_state(object_, state::clean) ; }
+    [[nodiscard]] constexpr bool is_dirty() const noexcept { return flag_.is_dirty(object_); }
 private:
     using Base::object_;
     using Base::logger_;

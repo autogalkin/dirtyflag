@@ -64,7 +64,6 @@ int main()
     {
         std::cout << "dynamic storage: \n";
         std::vector<df::state> dynamic_storage_{1};
-        dynamic_storage_[0] = df::state::clean;
         dynamic_storage_.push_back(df::state::clean);
         size_t index_to_store = 0;
         df::dirtyflag<char, df::storages::dynamic_storage<  decltype(dynamic_storage_)> > dyn_storage{'g', df::state::clean, dynamic_storage_, index_to_store};

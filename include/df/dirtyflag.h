@@ -10,7 +10,10 @@ enum class state : std::int8_t { clean = false, dirty = true };
 
 namespace storages {
 
-struct base_storage{};
+struct base_storage{
+    constexpr void mark () noexcept{}
+    constexpr void clear() noexcept{} 
+};
 
 class bool_storage {
     state state_;
@@ -19,22 +22,21 @@ public:
     constexpr bool is_dirty() const noexcept {
         return static_cast<bool>(state_);
     }
-    constexpr void mark ()          noexcept{
+    constexpr void mark () noexcept{
         state_ = state::dirty;
     }
-    constexpr void clear()          noexcept{
+    constexpr void clear() noexcept{
         state_ = state::clean;
     }  
 };
 
-template<auto& LogFuncPtr>
-requires requires(){LogFuncPtr();}
-struct logging{
-    logging(df::state init_state){
-        if(init_state == df::state::dirty) LogFuncPtr();
+template<auto& LogFuncRef>
+requires requires(){LogFuncRef();}
+struct logging : base_storage{
+    constexpr logging(df::state init_state) noexcept {
+        if(init_state == df::state::dirty) LogFuncRef();
     }
-    void mark() noexcept{ LogFuncPtr();}
-    constexpr void clear() noexcept{}
+    constexpr void mark()  noexcept{ LogFuncRef();}
 };
 
 
@@ -57,6 +59,7 @@ struct static_storage {
     }
 };
 
+
 template<typename DynamicStorage>
 requires requires(DynamicStorage& storage, size_t i){
     { storage[i] } -> std::convertible_to<df::state>;
@@ -66,7 +69,7 @@ struct dynamic_storage {
     constexpr dynamic_storage(df::state init_state, DynamicStorage& storage, size_t index_to_store){
         storage[index_to_store] = init_state;
     }
-    constexpr void mark(DynamicStorage& storage, size_t  index) noexcept{
+    constexpr void mark(DynamicStorage& storage, size_t  index)  noexcept{
         storage[index]  = df::state::dirty;
     }
     constexpr void clear(DynamicStorage& storage, size_t  index) noexcept{

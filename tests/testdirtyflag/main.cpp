@@ -7,7 +7,7 @@
 #include <vector>
 #include <cassert>
 
-struct test_function_specialization{
+struct test_function_specialization : df::storages::base_storage{
    test_function_specialization(df::state init_state){
     }
     template<typename Object>
@@ -17,12 +17,7 @@ struct test_function_specialization{
     void mark() noexcept{ // will newer call if specialization for dirty flag object exists
         std::cout << "newer calls " << std::endl;
     }
-    constexpr void clear() noexcept{
-    }
-    constexpr bool is_dirty(size_t index) const noexcept { return false; }
 };
-
-
 
 
 int main()
@@ -93,25 +88,5 @@ int main()
         std::cout << "copy_2, is dirty? - " << original.is_dirty() << " value = " << original.get() << '\n'; 
 
     }
-
-    
-    
-    
-   // std::cout << df3.is_dirty(0);
-   // df3.pin( 0) = 'f';
-   // df3.mark(0);
-    
-    //df4.pin() = 'g';
-   // df3.mark(0 );
-    //df3.pin (0 ) = 'f';
-    //df3.clear(0);
-    //df2.pin() = 'f';
-   // std::cout << df3.get() << df3.is_dirty(0);
-
-    //df3.mark();
-    //df.pin() = 'a';
-    //bool b = df.get() == df.get();
-    //std::cout << b;
-    //std::cout << df.pin() << sizeof(df) << df2.is_dirty();
     return 0;
 }

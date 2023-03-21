@@ -142,27 +142,17 @@ concept is_no_object = std::is_same_v<T, no_object>;
 
 template<typename T>
 concept has_get_func = requires(T& t){{ t.get() }; };
-template<typename T, typename ...Args>
-concept has_get_func_with_args = requires(T& t, Args... args){{ t.get(args...) }; };
 
-template<typename T>
-concept has_pin_func = requires(T& t){{ t.pin() }; };
 template<typename T, typename ...Args>
-concept has_pin_func_with_args = requires(T& t, Args... args){{ t.pin(args...) }; };
+concept has_pin_func = requires(T& t, Args... args){{ t.pin(args...) }; };
 
-template<typename T>
-concept has_mark_func = requires(T& t){{ t.mark() }; };
 template<typename T, typename ...Args>
-concept has_mark_func_with_args = requires(T& t, Args... args){{ t.mark(args...) }; };
+concept has_mark_func = requires(T& t, Args... args){{ t.mark(args...) }; };
 
-template<typename T>
-concept has_isdirty_func = requires(T& t){{ t.is_dirty() }; };
 template<typename T, typename ...Args>
-concept has_isdirty_func_with_args = requires(T& t, Args... args){{ t.is_dirty(args...) }; };
+concept has_is_dirty_func = requires(T& t, Args... args){{ t.is_dirty(args...) }; };
 
 }
-
-
 
 
 template<typename T = no_object, typename FlagStorage = storages::bool_storage>
@@ -203,7 +193,7 @@ public:
 
     template<typename ... Args>
     constexpr auto& pin(Args&... args ) noexcept
-    requires __details::has_pin_func_with_args<FlagStorage, Args...>{
+    requires __details::has_pin_func<FlagStorage, Args...>{
         return  FlagStorage::pin(args...);
     }
     ////////////////////////////////////////////
@@ -211,16 +201,16 @@ public:
     using ptr_or_ref_to_obj = typename std::conditional<std::is_pointer_v<T>, T,  T& >::type;
     template<typename ... Args>
     constexpr ptr_or_ref_to_obj pin(Args&... args ) noexcept 
-    requires __details::has_mark_func_with_args<FlagStorage, Args...> && (not __details::has_pin_func<FlagStorage>){     
+    requires __details::has_mark_func<FlagStorage, Args...> && (not __details::has_pin_func<FlagStorage>){     
         mark(args...);
         return Base_::object_;
     }
 
     constexpr auto& pin() noexcept
-    requires __details::has_mark_func_with_args<FlagStorage, T> || 
+    requires __details::has_mark_func<FlagStorage, T> || 
     __details::has_mark_func<FlagStorage>
         && (!__details::has_pin_func<FlagStorage>) { 
-        if constexpr(__details::has_mark_func_with_args<FlagStorage, T>){
+        if constexpr(__details::has_mark_func<FlagStorage, T>){
             mark(Base_::object_);
         }
         else{
@@ -230,18 +220,18 @@ public:
     }  
 
     constexpr bool is_dirty()  noexcept
-    requires __details::has_isdirty_func_with_args<FlagStorage, T> 
-    || __details::has_isdirty_func<FlagStorage> {
-        if constexpr(__details::has_isdirty_func_with_args<FlagStorage, T> ){
+    requires __details::has_is_dirty_func<FlagStorage, T> 
+    || __details::has_is_dirty_func<FlagStorage> {
+        if constexpr(__details::has_is_dirty_func<FlagStorage, T> ){
             return FlagStorage::is_dirty(Base_::object_); 
         }
-        else if constexpr (__details::has_isdirty_func<FlagStorage>)  {
+        else if constexpr (__details::has_is_dirty_func<FlagStorage>)  {
             return FlagStorage::is_dirty(); 
         } 
     }
     template<typename ... Args>
     constexpr bool is_dirty(Args&... args)  noexcept
-    requires __details::has_isdirty_func_with_args<FlagStorage, Args...> {
+    requires __details::has_is_dirty_func<FlagStorage, Args...> {
         return FlagStorage::is_dirty(args...) ;
     }
           

@@ -14,7 +14,7 @@ Dirty flags are a useful tool for indicating when data has been modified. By usi
 
 ## About <a name = "about"></a>
 
-I attempted to implement a C++ dirty flag without any memory overhead, and I tried several different methods that you'll see in [usage](#usage). This project consists of a single .hpp file that can be easily included in other projects.
+I attempted to implement a C++ dirty flag without any memory overhead, and I tried several different methods that you'll see in [details](#details). This project consists of a single .hpp file that can be easily included in other projects.
 
 ## Details <a name = "details"></a>
 I implemented a some flag storages to experiments how can use a bool flag within a structure:

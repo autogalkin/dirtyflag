@@ -11,11 +11,15 @@ enum class state : std::int8_t { clean = false, dirty = true };
 
 namespace storages {
 
+// this is a base class with empty methods to be compatible to dirtyflag<storage>
 struct base_storage{
+    // a mark method should uses for change a flag value to true
     constexpr void mark () noexcept{}
+    // a clear method should uses for change a flag to false
     constexpr void clear() noexcept{} 
 };
 
+// a simple storage that aligns to x2 size because stores a bool member
 class bool_storage {
     state state_;
 public:
@@ -31,6 +35,8 @@ public:
     }  
 };
 
+// a simple storage which has not a flag but calls a custom functor every time when
+// we get a non const value
 template<auto& LogFuncRef>
 requires requires(){LogFuncRef();}
 struct logging : base_storage{
@@ -40,6 +46,10 @@ struct logging : base_storage{
     constexpr void mark()  noexcept{ LogFuncRef();}
 };
 
+// using an external static container as a storage for multiple dirty flags.
+// you need to keep intex of your dirty flag, for example you will have a vector of
+// your dirtyflags and vector of bools where flag will be stored. This helps to keep
+// an original size of data and store flags as a packed array of bits
 template<auto& StaticStorageRef>
 requires requires(size_t i){
     { StaticStorageRef[i] } -> std::convertible_to<df::state>;
@@ -58,7 +68,8 @@ struct static_storage {
         return static_cast<bool>(StaticStorageRef[index]);
     }
 };
-
+// dynamic storage can use a non static array as a flag storage.
+// But we should pass ref of this array every time to keep size of our data
 template<typename DynamicStorage>
 requires requires(DynamicStorage& storage, size_t i){
     { storage[i] } -> std::convertible_to<df::state>;
@@ -78,7 +89,10 @@ struct dynamic_storage {
         return static_cast<bool>(storage[index]);
     }
 };
-
+// tagged ptr can store a flag in a free bit of poiner to our data
+// https://en.wikipedia.org/wiki/Tagged_pointer
+// you can use https://github.com/marzer/tagged_ptr lib or other to keep a cross platform way. Note! it is may be unsafe
+// for a future use or for specific platforms
 template<typename T, uint8_t Mask = alignof(T) - static_cast<uint8_t>(1)>
 class tagged_ptr_storage {
     uintptr_t ptr_;
@@ -114,20 +128,20 @@ private:
 } // namespace storages
 
 
-template<typename T> class _object_storage_base;
+// an empty object that indicate to specialize a dirtyflag without object member
 struct no_object_t {
     no_object_t() = default;
 };
 
 namespace __details {
-
+// the base of dirtyflag with the object member
 template<typename T>
 struct _object_storage_base{
     _object_storage_base(T&& obj): object_(obj){}
 protected:
     T object_;
 };
-
+// the base of dirtyflag without the object member
 template<> 
 struct _object_storage_base<no_object_t>{
     _object_storage_base(){}
@@ -136,6 +150,7 @@ struct _object_storage_base<no_object_t>{
 template<typename T>
 concept is_noobject = std::is_same_v<T, no_object_t>;
 
+// a few concepts to awoid a virtual table and check existing methods in the compile time
 template<typename T, typename ...Args>
 concept has_get_func      = requires(T& t, Args... args) {{ t.get(args...) };};
 
@@ -150,7 +165,7 @@ concept has_is_dirty_func = requires(T& t, Args... args) {{ t.is_dirty(args...) 
 
 }
 
-
+// a main wrapper for many flag storages that provides a standart api to use the dirty flag pattern
 template<typename T = no_object_t, typename FlagStorage = storages::bool_storage>
 struct dirtyflag  final : private FlagStorage, private __details::_object_storage_base<T>  {
 
@@ -168,9 +183,11 @@ public:
     constexpr dirtyflag(state init_state = state::clean, Args... args) noexcept
         : FlagStorage(init_state, args...), Base_(){}
 
+    // flag storage must implements this methods
     using FlagStorage::mark;
     using FlagStorage::clear;
 
+    // return a const ref to object which we can't change
     [[nodiscard]] constexpr const auto& get() const noexcept
     requires (not __details::is_noobject<T>)  {
             return Base_::object_;
@@ -189,8 +206,9 @@ public:
     }
     ////////////////////////////////////////////
 
+    // the pin method changes a flag and returns a non const ref to object
     template<typename ... Args>
-    constexpr typename std::conditional<std::is_pointer_v<T>, T,  T& >::type
+    [[nodiscard]] constexpr typename std::conditional<std::is_pointer_v<T>, T,  T& >::type
     pin(Args&... args ) noexcept 
     requires __details::has_mark_func<FlagStorage, Args...> 
     && (not __details::has_pin_func<FlagStorage>) && (not __details::is_noobject<T>){     
@@ -207,6 +225,7 @@ public:
         mark(args...);
     }
 
+    // the object of dirty flag have been changed or not
     template<typename ... Args>
     constexpr bool is_dirty(Args&... args)  noexcept
     requires __details::has_is_dirty_func<FlagStorage, Args...> {

@@ -1,22 +1,9 @@
-
-
 #include <iostream>
 #include <vector>
 #include <cassert>
 #include <inttypes.h>
-#include "df/dirtyflag.h"
 
-struct test_function_specialization : df::storages::base_storage{
-   test_function_specialization(df::state init_state){
-    }
-    template<typename Object>
-    void mark(Object obj) noexcept{
-        std::cout << "Hello World" << obj << std::endl;
-   }
-    void mark() noexcept{ // will newer call if specialization ~^ for dirty flag object exists
-        std::cout << "newer calls " << std::endl;
-    }
-};
+#include "df/dirtyflag.h"
 
 int main()
 {
@@ -75,7 +62,7 @@ int main()
     }
     {
         std::cout << "tagged ptr storage: \n";
-        df::dirtyflag<df::no_object_t, df::storages::tagged_ptr_storage<int>> ptr_storage{df::state::clean, new int{5}}; // minimum short available
+        df::dirtyflag<df::no_object_t, df::storages::tagged_ptr_storage<int>> ptr_storage{df::state::clean, new int{5}};
         std::cout << "size " << sizeof(ptr_storage) << '\n';
         assert(sizeof(ptr_storage) == sizeof(int*));
         std::cout << "start value: '" << ptr_storage.get() << "' start dirty:" << std::boolalpha << ptr_storage.is_dirty() << '\n';

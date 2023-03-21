@@ -1,4 +1,5 @@
 #pragma once
+
 #include <concepts>
 #include <cstdint>
 #include <type_traits>
@@ -80,62 +81,143 @@ struct dynamic_storage {
     }
 };
 
+template<typename T, uint8_t Mask = alignof(T) - static_cast<uint8_t>(1)>
+class tagged_ptr_storage {
+    using ptr_type = uintptr_t;
+    ptr_type ptr_;
+    static_assert((static_cast<uint8_t>(1) & Mask) == 1  && "You shouldn't be using T* that doesn't satisfy alighof(T), because in this case you dont have a free space for store a flag. Minimus 'short' required");
+public:
+  tagged_ptr_storage(const tagged_ptr_storage &) = delete;
+  tagged_ptr_storage &operator=(const tagged_ptr_storage &) = delete;
+
+  tagged_ptr_storage(df::state init_state, T *ptr)
+      : ptr_(set_flag(reinterpret_cast<uintptr_t>(ptr),
+                      static_cast<bool>(init_state))) {}
+  constexpr bool is_dirty() const noexcept {
+        return static_cast<bool>(ptr_ & static_cast<uintptr_t>(Mask));
+    }
+    constexpr T& pin() { mark(); return *get_ptr(ptr_);}
+    constexpr void mark () noexcept{
+        ptr_ = set_flag(ptr_, true);
+    }
+    constexpr void clear() noexcept{
+        ptr_ = set_flag(ptr_, false);
+    }
+    constexpr const T& get() const noexcept {
+        return *get_ptr(ptr_);
+    }
+    ~tagged_ptr_storage(){ delete get_ptr(ptr_);}
+private:
+    static uintptr_t set_flag(const uintptr_t ptr, bool flag){
+        return ptr | static_cast<uintptr_t>(static_cast<uint8_t>(flag) & Mask );
+    }
+    static T* get_ptr(uintptr_t ptr) {return reinterpret_cast<T*>(reinterpret_cast<uintptr_t>(ptr) & ~Mask);}
+};
+
 } // namespace storage
 
 
+template<typename T> class _object_storage_base;
+struct no_object {
+    no_object() = default;
+};
 
-template<class T, class FlagStorage = storages::bool_storage>
-struct dirtyflag  final : public FlagStorage  {
-
+template<typename T>
+struct _object_storage_base{
+    _object_storage_base(T&& obj): object_(obj){}
+protected:
     T object_;
-    
+};
+
+template<> 
+struct _object_storage_base<no_object>{
+    _object_storage_base(){}
+    [[no_unique_address]] no_object object_{};
+};
+template<typename T>
+concept has_pin_func = requires(T& t){{ t.pin() }; };
+
+template<typename T = no_object, typename FlagStorage = storages::bool_storage>
+struct dirtyflag  final : public FlagStorage, private _object_storage_base<T>  {
+
+    using Base_ = _object_storage_base<T> ;
 public:
 
     template <typename... Args>
+    requires( ! std::is_same_v<T, no_object>)
     constexpr dirtyflag(T &&object, state init_state = state::clean,
                         Args... args) noexcept
-        : FlagStorage(init_state, args...), object_(std::forward<T>(object)) {}
+        : FlagStorage(init_state, args...), _object_storage_base<T>(std::forward<T>(object)){}
+
+    template <typename... Args>
+    requires(std::is_same_v<T, no_object>)
+    constexpr dirtyflag(state init_state = state::clean,
+                        Args... args) noexcept
+        : FlagStorage(init_state, args...), _object_storage_base<T>(){}
 
     using FlagStorage::mark;
     using FlagStorage::clear;
 
     [[nodiscard]] constexpr
-        typename std::conditional<std::is_trivial_v<T>, T, const T &>::type
-        get() const noexcept {
-            return object_; }
+        const auto&
+        get() const noexcept 
+        requires requires(){ {Base_::object_} -> std::convertible_to<T>;} 
+        {
+            if constexpr (requires(){FlagStorage::get();}){
+                return FlagStorage::get();
+            }
+            else return Base_::object_;
+        }
+
+    constexpr auto& get()
+    requires requires(){{FlagStorage::get()};} && (!requires(){ std::is_pointer_v<decltype(FlagStorage::get())>;})
+    {
+        return FlagStorage::get();
+    }
 
     using ptr_or_ref_to_obj = typename std::conditional<std::is_pointer_v<T>, T,  T& >::type;
     template<typename ... Args>
-    
-    [[nodiscard]] constexpr       ptr_or_ref_to_obj pin(Args&... args ) noexcept 
+    constexpr ptr_or_ref_to_obj pin(Args&... args ) noexcept 
                 requires requires ( Args ...args) {{ mark( args... ) }; }
-    {   
+                && (!requires(){{FlagStorage::pin(args...)};})
+    {     
         mark(args...);
         assert(FlagStorage::is_dirty(args...) == true && "a 'mark' function of FlagStorage is invalid a flag != df::state::dirty"); 
-        return object_;
+        return Base_::object_;
     }
 
-    [[nodiscard]] constexpr       ptr_or_ref_to_obj pin()              noexcept
+    constexpr auto& pin()
+    requires requires(){{FlagStorage::pin()};}{
+        return FlagStorage::pin();
+    }
+    template<typename ... Args>
+    constexpr auto& pin(Args&... args )
+    requires requires(Args&... args ){{FlagStorage::pin(args...)};}{
+        return FlagStorage::pin(args...);
+    }
+
+    constexpr auto& pin()              noexcept
                   requires requires (T obj) {{ mark( obj ) }; } || requires{{ mark( ) }; }
+                  && (!requires(){{FlagStorage::pin()};})
     { 
-        if constexpr(requires(){mark(object_);}){
-            mark(object_);
+        if constexpr(requires(){mark(Base_::object_);}){
+            mark(Base_::object_);
         }
         else{
             mark();       
         }       
 #ifndef DEBUG
-        // check result
+    // check result
         constexpr auto error_message = "a 'mark' function of FlagStorage is invalid a flag != df::state::dirty";
-        if constexpr(requires(){FlagStorage::is_dirty(object_);}){
-            assert( FlagStorage::is_dirty(object_) == true && error_message); 
+        if constexpr(requires(){FlagStorage::is_dirty(Base_::object_);}){
+            assert( FlagStorage::is_dirty(Base_::object_) == true && error_message); 
         }
         else if constexpr (requires(){FlagStorage::is_dirty();})  {
             assert( FlagStorage::is_dirty()        == true && error_message); 
         }     
 #endif
-        return object_;
-    }              
+        return Base_::object_;
+        }            
 };
 
 } // namespace df

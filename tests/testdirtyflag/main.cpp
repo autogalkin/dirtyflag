@@ -1,11 +1,10 @@
-#include <atomic>
-#include <concepts>
-#include <ios>
+
+
 #include <iostream>
-#include "df/dirtyflag.h"
-#include <type_traits>
 #include <vector>
 #include <cassert>
+#include <inttypes.h>
+#include "df/dirtyflag.h"
 
 struct test_function_specialization : df::storages::base_storage{
    test_function_specialization(df::state init_state){
@@ -18,7 +17,6 @@ struct test_function_specialization : df::storages::base_storage{
         std::cout << "newer calls " << std::endl;
     }
 };
-
 
 int main()
 {
@@ -40,11 +38,11 @@ int main()
         static auto log = []{
             std::cout << "hello world from the logging storage!" << std::endl;
         };
-        df::dirtyflag<char, df::storages::logging<log>> log_flag{'l'};
-        assert(sizeof(log_flag) == sizeof(char)); // logging must be without a virtual table
+        df::dirtyflag<df::no_object, df::storages::logging<log>> log_flag{};
+        assert(sizeof(log_flag) == sizeof(df::storages::logging<log>));
         std::cout << "size " << sizeof(log_flag) << '\n';
         std::cout << "pin(): ";
-        log_flag.pin() = 'd';
+        log_flag.pin();
         std::cout << "\n";
     }
 
@@ -75,17 +73,16 @@ int main()
         assert(dyn_storage.is_dirty(dynamic_storage_, index_to_store) == true);
         std::cout << "after pin() the value is: '" << dyn_storage.get()  << "' is dirty?- " << std::boolalpha << dyn_storage.is_dirty(dynamic_storage_, index_to_store) << "\n\n";
     }
-
-    { 
-        std::cout << "check copy constructors: \n";
-        df::dirtyflag<char> original{'b'};
-        // copy constructors not affect on the flag, because we not change an original value
-        std::cout << "original, is dirty? - " << original.is_dirty() << " value = " << original.get() << '\n';
-        auto copy = original;
-        std::cout << "copy, is dirty? - " << original.is_dirty() << " value = " << original.get() << '\n';
-        auto copy_2{original};  
-        std::cout << "copy_2, is dirty? - " << original.is_dirty() << " value = " << original.get() << '\n'; 
-
+    {
+        std::cout << "tagged ptr storage: \n";
+        df::dirtyflag<df::no_object, df::storages::tagged_ptr_storage<int>> ptr_storage{df::state::clean, new int{5}}; // minimum short available
+        assert(sizeof(ptr_storage) == sizeof(int*));
+        std::cout << "size " << sizeof(ptr_storage) << '\n';
+        std::cout << "start value: '" << ptr_storage.get() << "' start dirty:" << std::boolalpha << ptr_storage.is_dirty() << '\n';
+        std::cout << "pin(): ";
+        ptr_storage.pin() = 3;
+        std::cout << "after pin() the value is: '" << ptr_storage.get()  << "' is dirty?- " << std::boolalpha << ptr_storage.is_dirty() << "\n\n";
     }
+    
     return 0;
 }

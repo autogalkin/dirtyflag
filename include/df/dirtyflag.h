@@ -114,13 +114,15 @@ private:
     static T* get_ptr(uintptr_t ptr) {return reinterpret_cast<T*>(reinterpret_cast<uintptr_t>(ptr) & ~Mask);}
 };
 
-} // namespace storage
+} // namespace storages
 
 
 template<typename T> class _object_storage_base;
 struct no_object {
     no_object() = default;
 };
+
+namespace __details {
 
 template<typename T>
 struct _object_storage_base{
@@ -134,90 +136,116 @@ struct _object_storage_base<no_object>{
     _object_storage_base(){}
     [[no_unique_address]] no_object object_{};
 };
+
+template<typename T>
+concept is_no_object = std::is_same_v<T, no_object>;
+
+template<typename T>
+concept has_get_func = requires(T& t){{ t.get() }; };
+template<typename T, typename ...Args>
+concept has_get_func_with_args = requires(T& t, Args... args){{ t.get(args...) }; };
+
 template<typename T>
 concept has_pin_func = requires(T& t){{ t.pin() }; };
+template<typename T, typename ...Args>
+concept has_pin_func_with_args = requires(T& t, Args... args){{ t.pin(args...) }; };
+
+template<typename T>
+concept has_mark_func = requires(T& t){{ t.mark() }; };
+template<typename T, typename ...Args>
+concept has_mark_func_with_args = requires(T& t, Args... args){{ t.mark(args...) }; };
+
+template<typename T>
+concept has_isdirty_func = requires(T& t){{ t.is_dirty() }; };
+template<typename T, typename ...Args>
+concept has_isdirty_func_with_args = requires(T& t, Args... args){{ t.is_dirty(args...) }; };
+
+}
+
+
+
 
 template<typename T = no_object, typename FlagStorage = storages::bool_storage>
-struct dirtyflag  final : public FlagStorage, private _object_storage_base<T>  {
+struct dirtyflag  final : private FlagStorage, private __details::_object_storage_base<T>  {
 
-    using Base_ = _object_storage_base<T> ;
+    using Base_ = __details::_object_storage_base<T> ;
 public:
 
     template <typename... Args>
-    requires( ! std::is_same_v<T, no_object>)
-    constexpr dirtyflag(T &&object, state init_state = state::clean,
-                        Args... args) noexcept
-        : FlagStorage(init_state, args...), _object_storage_base<T>(std::forward<T>(object)){}
+    requires(not __details::is_no_object<T>)
+    constexpr dirtyflag(T &&object, state init_state = state::clean, Args... args) noexcept
+        : FlagStorage(init_state, args...), Base_ (std::forward<T>(object)){}
 
+    // constructor for df::no_object
     template <typename... Args>
-    requires(std::is_same_v<T, no_object>)
-    constexpr dirtyflag(state init_state = state::clean,
-                        Args... args) noexcept
-        : FlagStorage(init_state, args...), _object_storage_base<T>(){}
+    requires __details::is_no_object<T>
+    constexpr dirtyflag(state init_state = state::clean, Args... args) noexcept
+        : FlagStorage(init_state, args...), Base_(){}
 
     using FlagStorage::mark;
     using FlagStorage::clear;
 
-    [[nodiscard]] constexpr
-        const auto&
-        get() const noexcept 
-        requires requires(){ {Base_::object_} -> std::convertible_to<T>;} 
-        {
-            if constexpr (requires(){FlagStorage::get();}){
-                return FlagStorage::get();
-            }
-            else return Base_::object_;
+    [[nodiscard]] constexpr const auto& get() const noexcept {
+            return Base_::object_;
         }
 
-    constexpr auto& get()
-    requires requires(){{FlagStorage::get()};} && (!requires(){ std::is_pointer_v<decltype(FlagStorage::get())>;})
-    {
+    // if FlagStorage provides own pin and get functions
+    ///////////////////////////////////////////
+    [[nodiscard]] constexpr const auto& get() const noexcept
+    requires __details::has_get_func<FlagStorage>{
         return FlagStorage::get();
     }
+
+    constexpr auto& pin() noexcept
+    requires __details::has_pin_func<FlagStorage>{
+        return FlagStorage::pin();
+    }
+
+    template<typename ... Args>
+    constexpr auto& pin(Args&... args ) noexcept
+    requires __details::has_pin_func_with_args<FlagStorage, Args...>{
+        return  FlagStorage::pin(args...);
+    }
+    ////////////////////////////////////////////
 
     using ptr_or_ref_to_obj = typename std::conditional<std::is_pointer_v<T>, T,  T& >::type;
     template<typename ... Args>
     constexpr ptr_or_ref_to_obj pin(Args&... args ) noexcept 
-                requires requires ( Args ...args) {{ mark( args... ) }; }
-                && (!requires(){{FlagStorage::pin(args...)};})
-    {     
+    requires __details::has_mark_func_with_args<FlagStorage, Args...> && (not __details::has_pin_func<FlagStorage>){     
         mark(args...);
-        assert(FlagStorage::is_dirty(args...) == true && "a 'mark' function of FlagStorage is invalid a flag != df::state::dirty"); 
         return Base_::object_;
     }
 
-    constexpr auto& pin()
-    requires requires(){{FlagStorage::pin()};}{
-        return FlagStorage::pin();
-    }
-    template<typename ... Args>
-    constexpr auto& pin(Args&... args )
-    requires requires(Args&... args ){{FlagStorage::pin(args...)};}{
-        return FlagStorage::pin(args...);
-    }
-
-    constexpr auto& pin()              noexcept
-                  requires requires (T obj) {{ mark( obj ) }; } || requires{{ mark( ) }; }
-                  && (!requires(){{FlagStorage::pin()};})
-    { 
-        if constexpr(requires(){mark(Base_::object_);}){
+    constexpr auto& pin() noexcept
+    requires __details::has_mark_func_with_args<FlagStorage, T> || 
+    __details::has_mark_func<FlagStorage>
+        && (!__details::has_pin_func<FlagStorage>) { 
+        if constexpr(__details::has_mark_func_with_args<FlagStorage, T>){
             mark(Base_::object_);
         }
         else{
             mark();       
         }       
-#ifndef DEBUG
-    // check result
-        constexpr auto error_message = "a 'mark' function of FlagStorage is invalid a flag != df::state::dirty";
-        if constexpr(requires(){FlagStorage::is_dirty(Base_::object_);}){
-            assert( FlagStorage::is_dirty(Base_::object_) == true && error_message); 
-        }
-        else if constexpr (requires(){FlagStorage::is_dirty();})  {
-            assert( FlagStorage::is_dirty()        == true && error_message); 
-        }     
-#endif
         return Base_::object_;
-        }            
+    }  
+
+    constexpr bool is_dirty()  noexcept
+    requires __details::has_isdirty_func_with_args<FlagStorage, T> 
+    || __details::has_isdirty_func<FlagStorage> {
+        if constexpr(__details::has_isdirty_func_with_args<FlagStorage, T> ){
+            return FlagStorage::is_dirty(Base_::object_); 
+        }
+        else if constexpr (__details::has_isdirty_func<FlagStorage>)  {
+            return FlagStorage::is_dirty(); 
+        } 
+    }
+    template<typename ... Args>
+    constexpr bool is_dirty(Args&... args)  noexcept
+    requires __details::has_isdirty_func_with_args<FlagStorage, Args...> {
+        return FlagStorage::is_dirty(args...) ;
+    }
+          
 };
+
 
 } // namespace df

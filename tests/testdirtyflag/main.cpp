@@ -13,7 +13,7 @@ struct test_function_specialization : df::storages::base_storage{
     void mark(Object obj) noexcept{
         std::cout << "Hello World" << obj << std::endl;
    }
-    void mark() noexcept{ // will newer call if specialization for dirty flag object exists
+    void mark() noexcept{ // will newer call if specialization ~^ for dirty flag object exists
         std::cout << "newer calls " << std::endl;
     }
 };

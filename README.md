@@ -75,9 +75,9 @@ assert(ptr_storage.is_dirty() == true);
 To implement a flag storage needs this two main methods(I not use a virtual table): 
 ```cpp
 struct base_storage{
-    // a mark method should uses for change a flag value to true
+    // a mark method should use to change a flag value to true
     constexpr void mark(){}
-    // a clear method should uses for change a flag to false
+    // a clear method should use to change a flag to false
     constexpr void clear(){} 
 };
 ```

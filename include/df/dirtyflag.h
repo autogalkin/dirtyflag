@@ -2,7 +2,6 @@
 
 #include <concepts>
 #include <cstdint>
-#include <iterator>
 #include <type_traits>
 #include <cassert>
 
@@ -85,7 +84,7 @@ class tagged_ptr_storage {
     uintptr_t ptr_;
     static_assert((static_cast<uint8_t>(1) & Mask) == 1  && "You shouldn't be using T* that doesn't satisfy alighof(T), because in this case you dont have a free space for store a flag. Minimum 'short' required");
 public:
-    tagged_ptr_storage(const tagged_ptr_storage &) = delete;
+    tagged_ptr_storage(const tagged_ptr_storage &)            = delete;
     tagged_ptr_storage &operator=(const tagged_ptr_storage &) = delete;
 
     tagged_ptr_storage(df::state init_state, T *ptr)

@@ -13,9 +13,9 @@ namespace storages {
 
 // this is a base class with empty methods to be compatible to dirtyflag<storage>
 struct base_storage{
-    // a mark method should uses for change a flag value to true
+    // a mark method should use to change a flag value to true
     constexpr void mark () noexcept{}
-    // a clear method should uses for change a flag to false
+    // a clear method should use to change a flag to false
     constexpr void clear() noexcept{} 
 };
 
@@ -46,10 +46,11 @@ struct logging : base_storage{
     constexpr void mark()  noexcept{ LogFuncRef();}
 };
 
-// using an external static container as a storage for multiple dirty flags.
-// you need to keep intex of your dirty flag, for example you will have a vector of
-// your dirtyflags and vector of bools where flag will be stored. This helps to keep
-// an original size of data and store flags as a packed array of bits
+/*
+To manage multiple dirty flags efficiently, I created a storage with an external static container.
+This approach helps to maintain the original size of the data and enables us to
+store the flags as a packed array of bits, minimizing memory usage
+*/
 template<auto& StaticStorageRef>
 requires requires(size_t i){
     { StaticStorageRef[i] } -> std::convertible_to<df::state>;
@@ -68,8 +69,11 @@ struct static_storage {
         return static_cast<bool>(StaticStorageRef[index]);
     }
 };
-// dynamic storage can use a non static array as a flag storage.
-// But we should pass ref of this array every time to keep size of our data
+/*
+A dynamic storage can use a non static array as a flag storage. 
+But we should pass a reference of this array every time
+to keep size of our data without store a pointer to container
+*/
 template<typename DynamicStorage>
 requires requires(DynamicStorage& storage, size_t i){
     { storage[i] } -> std::convertible_to<df::state>;
@@ -89,10 +93,15 @@ struct dynamic_storage {
         return static_cast<bool>(storage[index]);
     }
 };
-// tagged ptr can store a flag in a free bit of poiner to our data
-// https://en.wikipedia.org/wiki/Tagged_pointer
-// you can use https://github.com/marzer/tagged_ptr lib or other to keep a cross platform way. Note! it is may be unsafe
-// for a future use or for specific platforms
+/*
+A tagged pointer storage is a method that utilizes a tagged pointer to store
+a flag in a free bit of the pointer to our custom data. 
+To implement this approach, you can use a library such 
+as https://github.com/marzer/tagged_ptr or another one that provides more details and ensures 
+a cross-platform compatibility. However, it is important to note that this method may be 
+unsafe for certain platforms or future use cases. Therefore, it's important to consider the 
+potential risks before implementing this approach.
+*/
 template<typename T, uint8_t Mask = alignof(T) - static_cast<uint8_t>(1)>
 class tagged_ptr_storage {
     uintptr_t ptr_;
@@ -150,7 +159,7 @@ struct _object_storage_base<no_object_t>{
 template<typename T>
 concept is_noobject = std::is_same_v<T, no_object_t>;
 
-// a few concepts to awoid a virtual table and check existing methods in the compile time
+// a few concepts to avoid a virtual table and check existing methods in the compile time
 template<typename T, typename ...Args>
 concept has_get_func      = requires(T& t, Args... args) {{ t.get(args...) };};
 

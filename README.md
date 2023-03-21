@@ -38,10 +38,10 @@ df::dirtyflag<df::no_object_t, df::storages::logging<log>> log_flag{};
 assert(sizeof(log_flag) == sizeof(df::storages::logging<log>));
 log_flag.pin(); // -> Hello from the logging storage!
 ```
-To manage multiple dirty flags efficiently, I created an external static container
 
 
-- An external static container that used as a storage for multiple dirty flags. This approach helps to maintain the original size of the data and enables us to store the flags as a packed array of bits, minimizing memory usage:
+
+- To manage multiple dirty flags efficiently, I created a storage with an external static container. This approach helps to maintain the original size of the data and enables us to store the flags as a packed array of bits, minimizing memory usage:
 ```cpp
 static std::vector<df::state> static_storage_{1}; // or boost::dynamic_bitset, std::bitset
 size_t index_to_store = 0;

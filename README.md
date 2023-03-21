@@ -53,7 +53,7 @@ assert(ststorage_flag.is_dirty(index_to_store) == true);
     
 ```
 
-- A dynamic storage can use a non static array as a flag storage. But we should pass a reference of this array every time to keep size of our data without store a pointer to container
+- A dynamic storage can use a non static array as a flag storage. But we should pass a reference of this array every time to keep size of our data without store a pointer to a container
 ```cpp
 std::vector<df::state> dynamic_storage_{1};
 size_t index_to_store = 0;

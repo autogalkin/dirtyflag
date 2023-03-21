@@ -2,6 +2,7 @@
 
 #include <concepts>
 #include <cstdint>
+#include <iterator>
 #include <type_traits>
 #include <cassert>
 
@@ -40,7 +41,6 @@ struct logging : base_storage{
     constexpr void mark()  noexcept{ LogFuncRef();}
 };
 
-
 template<auto& StaticStorageRef>
 requires requires(size_t i){
     { StaticStorageRef[i] } -> std::convertible_to<df::state>;
@@ -59,7 +59,6 @@ struct static_storage {
         return static_cast<bool>(StaticStorageRef[index]);
     }
 };
-
 
 template<typename DynamicStorage>
 requires requires(DynamicStorage& storage, size_t i){
@@ -83,17 +82,16 @@ struct dynamic_storage {
 
 template<typename T, uint8_t Mask = alignof(T) - static_cast<uint8_t>(1)>
 class tagged_ptr_storage {
-    using ptr_type = uintptr_t;
-    ptr_type ptr_;
-    static_assert((static_cast<uint8_t>(1) & Mask) == 1  && "You shouldn't be using T* that doesn't satisfy alighof(T), because in this case you dont have a free space for store a flag. Minimus 'short' required");
+    uintptr_t ptr_;
+    static_assert((static_cast<uint8_t>(1) & Mask) == 1  && "You shouldn't be using T* that doesn't satisfy alighof(T), because in this case you dont have a free space for store a flag. Minimum 'short' required");
 public:
-  tagged_ptr_storage(const tagged_ptr_storage &) = delete;
-  tagged_ptr_storage &operator=(const tagged_ptr_storage &) = delete;
+    tagged_ptr_storage(const tagged_ptr_storage &) = delete;
+    tagged_ptr_storage &operator=(const tagged_ptr_storage &) = delete;
 
-  tagged_ptr_storage(df::state init_state, T *ptr)
+    tagged_ptr_storage(df::state init_state, T *ptr)
       : ptr_(set_flag(reinterpret_cast<uintptr_t>(ptr),
                       static_cast<bool>(init_state))) {}
-  constexpr bool is_dirty() const noexcept {
+    constexpr bool is_dirty() const noexcept {
         return static_cast<bool>(ptr_ & static_cast<uintptr_t>(Mask));
     }
     constexpr T& pin() { mark(); return *get_ptr(ptr_);}
@@ -118,8 +116,8 @@ private:
 
 
 template<typename T> class _object_storage_base;
-struct no_object {
-    no_object() = default;
+struct no_object_t {
+    no_object_t() = default;
 };
 
 namespace __details {
@@ -132,65 +130,59 @@ protected:
 };
 
 template<> 
-struct _object_storage_base<no_object>{
+struct _object_storage_base<no_object_t>{
     _object_storage_base(){}
-    [[no_unique_address]] no_object object_{};
 };
 
 template<typename T>
-concept is_no_object = std::is_same_v<T, no_object>;
-
-template<typename T>
-concept has_get_func = requires(T& t){{ t.get() }; };
+concept is_noobject = std::is_same_v<T, no_object_t>;
 
 template<typename T, typename ...Args>
-concept has_pin_func = requires(T& t, Args... args){{ t.pin(args...) }; };
+concept has_get_func      = requires(T& t, Args... args) {{ t.get(args...) };};
 
 template<typename T, typename ...Args>
-concept has_mark_func = requires(T& t, Args... args){{ t.mark(args...) }; };
+concept has_pin_func      = requires(T& t, Args... args) {{ t.pin(args...) };};
 
 template<typename T, typename ...Args>
-concept has_is_dirty_func = requires(T& t, Args... args){{ t.is_dirty(args...) }; };
+concept has_mark_func     = requires(T& t, Args... args) {{ t.mark(args...) };};
+
+template<typename T, typename ...Args>
+concept has_is_dirty_func = requires(T& t, Args... args) {{ t.is_dirty(args...) };};
 
 }
 
 
-template<typename T = no_object, typename FlagStorage = storages::bool_storage>
+template<typename T = no_object_t, typename FlagStorage = storages::bool_storage>
 struct dirtyflag  final : private FlagStorage, private __details::_object_storage_base<T>  {
 
     using Base_ = __details::_object_storage_base<T> ;
 public:
 
     template <typename... Args>
-    requires(not __details::is_no_object<T>)
+    requires(not __details::is_noobject<T>)
     constexpr dirtyflag(T &&object, state init_state = state::clean, Args... args) noexcept
         : FlagStorage(init_state, args...), Base_ (std::forward<T>(object)){}
 
     // constructor for df::no_object
     template <typename... Args>
-    requires __details::is_no_object<T>
+    requires __details::is_noobject<T>
     constexpr dirtyflag(state init_state = state::clean, Args... args) noexcept
         : FlagStorage(init_state, args...), Base_(){}
 
     using FlagStorage::mark;
     using FlagStorage::clear;
 
-    [[nodiscard]] constexpr const auto& get() const noexcept {
+    [[nodiscard]] constexpr const auto& get() const noexcept
+    requires (not __details::is_noobject<T>)  {
             return Base_::object_;
-        }
+    }
 
-    // if FlagStorage provides own pin and get functions
+    // if FlagStorage provides own get or pin functions
     ///////////////////////////////////////////
     [[nodiscard]] constexpr const auto& get() const noexcept
     requires __details::has_get_func<FlagStorage>{
         return FlagStorage::get();
     }
-
-    constexpr auto& pin() noexcept
-    requires __details::has_pin_func<FlagStorage>{
-        return FlagStorage::pin();
-    }
-
     template<typename ... Args>
     constexpr auto& pin(Args&... args ) noexcept
     requires __details::has_pin_func<FlagStorage, Args...>{
@@ -198,37 +190,24 @@ public:
     }
     ////////////////////////////////////////////
 
-    using ptr_or_ref_to_obj = typename std::conditional<std::is_pointer_v<T>, T,  T& >::type;
     template<typename ... Args>
-    constexpr ptr_or_ref_to_obj pin(Args&... args ) noexcept 
-    requires __details::has_mark_func<FlagStorage, Args...> && (not __details::has_pin_func<FlagStorage>){     
+    constexpr typename std::conditional<std::is_pointer_v<T>, T,  T& >::type
+    pin(Args&... args ) noexcept 
+    requires __details::has_mark_func<FlagStorage, Args...> 
+    && (not __details::has_pin_func<FlagStorage>) && (not __details::is_noobject<T>){     
         mark(args...);
         return Base_::object_;
     }
 
-    constexpr auto& pin() noexcept
-    requires __details::has_mark_func<FlagStorage, T> || 
-    __details::has_mark_func<FlagStorage>
-        && (!__details::has_pin_func<FlagStorage>) { 
-        if constexpr(__details::has_mark_func<FlagStorage, T>){
-            mark(Base_::object_);
-        }
-        else{
-            mark();       
-        }       
-        return Base_::object_;
-    }  
-
-    constexpr bool is_dirty()  noexcept
-    requires __details::has_is_dirty_func<FlagStorage, T> 
-    || __details::has_is_dirty_func<FlagStorage> {
-        if constexpr(__details::has_is_dirty_func<FlagStorage, T> ){
-            return FlagStorage::is_dirty(Base_::object_); 
-        }
-        else if constexpr (__details::has_is_dirty_func<FlagStorage>)  {
-            return FlagStorage::is_dirty(); 
-        } 
+    // specialization for df::no_object
+    template<typename ... Args>
+    constexpr void pin(Args&... args ) noexcept 
+    requires __details::has_mark_func<FlagStorage, Args...> 
+    && (not __details::has_pin_func<FlagStorage>) 
+    && __details::is_noobject<T> {
+        mark(args...);
     }
+
     template<typename ... Args>
     constexpr bool is_dirty(Args&... args)  noexcept
     requires __details::has_is_dirty_func<FlagStorage, Args...> {

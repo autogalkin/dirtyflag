@@ -38,7 +38,7 @@ int main()
         static auto log = []{
             std::cout << "hello world from the logging storage!" << std::endl;
         };
-        df::dirtyflag<df::no_object, df::storages::logging<log>> log_flag{};
+        df::dirtyflag<df::no_object_t, df::storages::logging<log>> log_flag{};
         assert(sizeof(log_flag) == sizeof(df::storages::logging<log>));
         std::cout << "size " << sizeof(log_flag) << '\n';
         std::cout << "pin(): ";
@@ -75,9 +75,9 @@ int main()
     }
     {
         std::cout << "tagged ptr storage: \n";
-        df::dirtyflag<df::no_object, df::storages::tagged_ptr_storage<int>> ptr_storage{df::state::clean, new int{5}}; // minimum short available
-        assert(sizeof(ptr_storage) == sizeof(int*));
+        df::dirtyflag<df::no_object_t, df::storages::tagged_ptr_storage<int>> ptr_storage{df::state::clean, new int{5}}; // minimum short available
         std::cout << "size " << sizeof(ptr_storage) << '\n';
+        assert(sizeof(ptr_storage) == sizeof(int*));
         std::cout << "start value: '" << ptr_storage.get() << "' start dirty:" << std::boolalpha << ptr_storage.is_dirty() << '\n';
         std::cout << "pin(): ";
         ptr_storage.pin() = 3;

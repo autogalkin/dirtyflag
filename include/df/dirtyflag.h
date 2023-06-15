@@ -236,7 +236,7 @@ public:
 
     // the object of dirty flag have been changed or not
     template<typename ... Args>
-    constexpr bool is_dirty(Args&... args)  noexcept
+    constexpr bool is_dirty(Args&... args) const noexcept
     requires __details::has_is_dirty_func<FlagStorage, Args...> {
         return FlagStorage::is_dirty(args...) ;
     }
